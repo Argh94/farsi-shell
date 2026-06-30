@@ -1,0 +1,24 @@
+a/farsi-shell\Cross.toml → b/farsi-shell\Cross.toml
+@@ -0,0 +1,22 @@
++# Cross-compilation configuration for farsi-shell
++# Used with 'cross' tool for building Android/Termux binaries
++
++# Target for Android aarch64 (most modern phones)
++[target.aarch64-linux-android]
++# Use the official Android NDK image
++image = "ghcr.io/cross-rs/aarch64-linux-android:main"
++# Environment variables for the build
++env = { }
++
++# Target for Android arm (older phones)
++[target.arm-linux-androideabi]
++image = "ghcr.io/cross-rs/arm-linux-androideabi:main"
++
++# Target for Android x86_64 (emulators)
++[target.x86_64-linux-android]
++image = "ghcr.io/cross-rs/x86_64-linux-android:main"
++
++# Build settings
++[build]
++# Default target
++default-target = "aarch64-linux-android"
