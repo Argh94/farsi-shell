@@ -5,7 +5,7 @@ mod text_processor;
 
 use std::env;
 use std::io::{self, Read, Write};
-use std::os::unix::io::BorrowedFd;
+use std::os::unix::io::{AsRawFd, BorrowedFd};
 use std::process;
 use pty::{PtySession, WinSize, get_terminal_size, is_tty};
 use text_processor::StreamProcessor;
