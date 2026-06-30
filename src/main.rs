@@ -5,7 +5,7 @@ mod text_processor;
 
 use std::env;
 use std::io::{self, Read, Write};
-use std::os::unix::io::{AsRawFd, BorrowedFd};
+use std::os::unix::io::AsRawFd;
 use std::process;
 use pty::{PtySession, WinSize, get_terminal_size, is_tty};
 use text_processor::StreamProcessor;
@@ -38,78 +38,51 @@ fn main() {
     };
 
     eprintln!("farsi-shell v{} - Persian/Arabic text display for Termux", VERSION);
-    eprintln!("Type 'exit' or press Ctrl+D to exit");
-    eprintln!();
+    eprintln!("Type 'exit' or press Ctrl+D to exit\n");
 
     let session = match PtySession::new(shell, win_size) {
-        Ok(session) => session,
-        Err(e) => { eprintln!("Error: {}", e); process::exit(1); }
+        Ok(s) => s,
+        Err(e) => { eprintln!("Error creating PTY: {}", e); process::exit(1); }
     };
 
-    match run_loop(&session) {
-        Ok(exit_code) => process::exit(exit_code),
-        Err(e) => { eprintln!("Error: {}", e); process::exit(1); }
+    if let Err(e) = run_loop(&session) {
+        eprintln!("Error: {}", e);
     }
 }
 
-fn run_loop(session: &PtySession) -> io::Result<i32> {
-    let mut stdin = io::stdin();
-    let mut stdout = io::stdout();
+fn run_loop(session: &PtySession) -> io::Result<()> {
     let mut processor = StreamProcessor::new();
-    let mut input_buf = [0u8; BUFFER_SIZE];
-    let mut output_buf = [0u8; BUFFER_SIZE];
-    let master_fd = session.master_fd();
-    let stdin_fd = stdin.as_raw_fd();
+    let mut buf = [0u8; BUFFER_SIZE];
 
     loop {
-        if !session.is_alive() {
-            while session.has_data(0).unwrap_or(false) {
-                let n = session.read(&mut output_buf).unwrap_or(0);
-                if n == 0 { break; }
-                let processed = processor.process_bytes(&output_buf[..n]);
-                let _ = stdout.write_all(processed.as_bytes());
+        // Read from shell output
+        match session.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                let processed = processor.process_bytes(&buf[..n]);
+                let _ = io::stdout().write_all(processed.as_bytes());
+                let _ = io::stdout().flush();
             }
-            let _ = stdout.flush();
-            match waitpid(session.child_pid(), Some(WaitPidFlag::WNOHANG)) {
-                Ok(WaitStatus::Exited(_, code)) => return Ok(code),
-                Ok(WaitStatus::Signaled(_, signal, _)) => return Ok(128 + signal as i32),
-                _ => return Ok(0),
-            }
+            Err(_) => {}
         }
 
-        // Simple sleep to reduce CPU usage
-        std::thread::sleep(std::time::Duration::from_millis(10));
-
-        // Read from master (shell output)
-        if let Ok(n) = session.read(&mut output_buf) {
-            if n > 0 {
-                let processed = processor.process_bytes(&output_buf[..n]);
-                let _ = stdout.write_all(processed.as_bytes());
-                let _ = stdout.flush();
-            }
-        }
-
-        // Read from stdin (user input)
-        if let Ok(n) = stdin.read(&mut input_buf) {
-            if n > 0 {
-                let _ = session.write(&input_buf[..n]);
-            } else {
+        // Read user input (non-blocking attempt)
+        if let Ok(n) = io::stdin().read(&mut buf) {
+            if n == 0 {
                 break;
             }
+            let _ = session.write(&buf[..n]);
+        } else {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        if !session.is_alive() {
+            break;
         }
     }
-
-    let remaining = processor.flush();
-    if !remaining.is_empty() {
-        let _ = stdout.write_all(remaining.as_bytes());
-    }
-    Ok(0)
+    Ok(())
 }
 
 fn print_help() {
-    println!("farsi-shell v{} - Persian/Arabic text display for Termux", VERSION);
-    println!();
-    println!("USAGE: farsi-shell [SHELL]");
-    println!();
-    println!("Example: farsi-shell");
+    println!("farsi-shell - Persian text fixer for Termux");
 }
