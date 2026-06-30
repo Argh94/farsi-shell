@@ -63,13 +63,13 @@ fn run_loop(session: &PtySession) -> io::Result<i32> {
 
     loop {
         if !session.is_alive() {
-            while session.has_data(0)? {
-                let n = session.read(&mut output_buf)?;
+            while session.has_data(0).unwrap_or(false) {
+                let n = session.read(&mut output_buf).unwrap_or(0);
                 if n == 0 { break; }
                 let processed = processor.process_bytes(&output_buf[..n]);
-                stdout.write_all(processed.as_bytes())?;
+                let _ = stdout.write_all(processed.as_bytes());
             }
-            stdout.flush()?;
+            let _ = stdout.flush();
             match waitpid(session.child_pid(), Some(WaitPidFlag::WNOHANG)) {
                 Ok(WaitStatus::Exited(_, code)) => return Ok(code),
                 Ok(WaitStatus::Signaled(_, signal, _)) => return Ok(128 + signal as i32),
@@ -77,39 +77,31 @@ fn run_loop(session: &PtySession) -> io::Result<i32> {
             }
         }
 
-        let mut readfds = nix::sys::select::FdSet::new();
-        let stdin_borrowed = unsafe { BorrowedFd::borrow_raw(stdin_fd) };
-        let master_borrowed = unsafe { BorrowedFd::borrow_raw(master_fd) };
-        readfds.insert(&stdin_borrowed);
-        readfds.insert(&master_borrowed);
-        let mut timeout = nix::sys::time::TimeVal::new(1, 0);
+        // Simple sleep to reduce CPU usage
+        std::thread::sleep(std::time::Duration::from_millis(10));
 
-        let result = nix::sys::select::select(
-            Some(std::cmp::max(stdin_fd, master_fd) + 1),
-            &mut readfds, None, None, &mut timeout,
-        )?;
-
-        if result == 0 { continue; }
-
-        if readfds.contains(&stdin_borrowed) {
-            let n = stdin.read(&mut input_buf)?;
-            if n == 0 { break; }
-            session.write(&input_buf[..n])?;
+        // Read from master (shell output)
+        if let Ok(n) = session.read(&mut output_buf) {
+            if n > 0 {
+                let processed = processor.process_bytes(&output_buf[..n]);
+                let _ = stdout.write_all(processed.as_bytes());
+                let _ = stdout.flush();
+            }
         }
 
-        if readfds.contains(&master_borrowed) {
-            let n = session.read(&mut output_buf)?;
-            if n == 0 { break; }
-            let processed = processor.process_bytes(&output_buf[..n]);
-            stdout.write_all(processed.as_bytes())?;
-            stdout.flush()?;
+        // Read from stdin (user input)
+        if let Ok(n) = stdin.read(&mut input_buf) {
+            if n > 0 {
+                let _ = session.write(&input_buf[..n]);
+            } else {
+                break;
+            }
         }
     }
 
     let remaining = processor.flush();
     if !remaining.is_empty() {
-        stdout.write_all(remaining.as_bytes())?;
-        stdout.flush()?;
+        let _ = stdout.write_all(remaining.as_bytes());
     }
     Ok(0)
 }
@@ -117,13 +109,7 @@ fn run_loop(session: &PtySession) -> io::Result<i32> {
 fn print_help() {
     println!("farsi-shell v{} - Persian/Arabic text display for Termux", VERSION);
     println!();
-    println!("USAGE: farsi-shell [OPTIONS] [SHELL]");
+    println!("USAGE: farsi-shell [SHELL]");
     println!();
-    println!("OPTIONS:");
-    println!("    -h, --help       Print help");
-    println!("    -V, --version    Print version");
-    println!();
-    println!("EXAMPLES:");
-    println!("    farsi-shell");
-    println!("    farsi-shell /data/data/com.termux/files/usr/bin/zsh");
+    println!("Example: farsi-shell");
 }
