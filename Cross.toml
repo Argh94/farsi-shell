@@ -1,0 +1,18 @@
+# Cross-compilation configuration for farsi-shell
+# Used with 'cross' tool for building Android/Termux binaries
+
+# Target for Android aarch64 (most modern phones)
+[target.aarch64-linux-android]
+image = "ghcr.io/cross-rs/aarch64-linux-android:main"
+
+# Target for Android arm (older phones)
+[target.arm-linux-androideabi]
+image = "ghcr.io/cross-rs/arm-linux-androideabi:main"
+
+# Target for Android x86_64 (emulators)
+[target.x86_64-linux-android]
+image = "ghcr.io/cross-rs/x86_64-linux-android:main"
+
+# Build settings
+[build]
+default-target = "aarch64-linux-android"
