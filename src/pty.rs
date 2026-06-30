@@ -41,9 +41,9 @@ impl PtySession {
             match fork().map_err(|e| io::Error::new(io::ErrorKind::Other, format!("fork failed: {}", e)))? {
                 ForkResult::Parent { child } => {
                     close(slave_fd).ok();
-                    if let Ok(mut t) = termios::tcgetattr(unsafe { BorrowedFd::borrow_raw(stdin_fd) }) {
+                    if let Ok(mut t) = termios::tcgetattr(BorrowedFd::borrow_raw(stdin_fd)) {
                         set_raw_mode(&mut t);
-                        let _ = termios::tcsetattr(unsafe { BorrowedFd::borrow_raw(stdin_fd) }, SetArg::TCSANOW, &t);
+                        let _ = termios::tcsetattr(BorrowedFd::borrow_raw(stdin_fd), SetArg::TCSANOW, &t);
                     }
                     Ok(PtySession { master_fd, child_pid: child, original_termios })
                 }
